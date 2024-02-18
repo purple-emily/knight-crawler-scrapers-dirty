@@ -1,0 +1,41 @@
+{
+  "torrents_count": 779119,
+  "limit": 100,
+  "page": 1,
+  "torrents": [
+    {
+      "id": 2272892,
+      "hash": "5cd35ff4b0a69f85fa92d0a68846bc1065360c93",
+      "filename": "7th.time.loop.the.villainess.enjoys.a.carefree.life.married.to.her.worst.enemy.s01e07.1080p.web.h264-kawaii[EZTVx.to].mkv",
+      "torrent_url": "https://zoink.ch/torrent/7th.time.loop.the.villainess.enjoys.a.carefree.life.married.to.her.worst.enemy.s01e07.1080p.web.h264-kawaii[EZTVx.to].mkv.torrent",
+      "magnet_url": "magnet:?xt=urn:btih:5cd35ff4b0a69f85fa92d0a68846bc1065360c93&dn=7th.time.loop.the.villainess.enjoys.a.carefree.life.married.to.her.worst.enemy.s01e07.1080p.web.h264-kawaii%5Beztv%5D&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://9.rarbg.me:2970/announce&tr=udp://p4p.arenabg.com:1337/announce&tr=udp://tracker.torrent.eu.org:451/announce&tr=udp://tracker.dler.org:6969/announce&tr=udp://open.stealth.si:80/announce&tr=udp://ipv4.tracker.harry.lu:80/announce&tr=https://opentracker.i2p.rocks:443/announce",
+      "title": "7th Time Loop The Villainess Enjoys a Carefree Life Married to Her Worst Enemy S01E07 1080p WEB H264-KAWAII EZTV",
+      "imdb_id": "28685624",
+      "season": "1",
+      "episode": "7",
+      "small_screenshot": "//ezimg.ch/thumbs/7th-time-loop-the-villainess-enjoys-a-carefree-life-married-to-her-worst-enemy-s01e07-1080p-web-h264-kawaii-small.jpg",
+      "large_screenshot": "//ezimg.ch/thumbs/7th-time-loop-the-villainess-enjoys-a-carefree-life-married-to-her-worst-enemy-s01e07-1080p-web-h264-kawaii-large.jpg",
+      "seeds": 0,
+      "peers": 0,
+      "date_released_unix": 1708269700,
+      "size_bytes": "1451491496"
+    },
+    {
+      "id": 2272891,
+      "hash": "b6ddb2af6c6c919a4ae23c0761c60c221a108174",
+      "filename": "Evidence.of.the.Unexplained.S01E01.XviD-AFG[EZTVx.to].avi",
+      "torrent_url": "https://zoink.ch/torrent/Evidence.of.the.Unexplained.S01E01.XviD-AFG[EZTVx.to].avi.torrent",
+      "magnet_url": "magnet:?xt=urn:btih:b6ddb2af6c6c919a4ae23c0761c60c221a108174&dn=Evidence.of.the.Unexplained.S01E01.XviD-AFG%5Beztv%5D&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://9.rarbg.me:2970/announce&tr=udp://p4p.arenabg.com:1337/announce&tr=udp://tracker.torrent.eu.org:451/announce&tr=udp://tracker.dler.org:6969/announce&tr=udp://open.stealth.si:80/announce&tr=udp://ipv4.tracker.harry.lu:80/announce&tr=https://opentracker.i2p.rocks:443/announce",
+      "title": "Evidence of the Unexplained S01E01 XviD-AFG EZTV",
+      "imdb_id": "27208722",
+      "season": "1",
+      "episode": "1",
+      "small_screenshot": "//ezimg.ch/thumbs/evidence-of-the-unexplained-s01e01-xvid-afg-small.jpg",
+      "large_screenshot": "//ezimg.ch/thumbs/evidence-of-the-unexplained-s01e01-xvid-afg-large.jpg",
+      "seeds": 1,
+      "peers": 11,
+      "date_released_unix": 1708269499,
+      "size_bytes": "699345874"
+    }
+  ]
+}

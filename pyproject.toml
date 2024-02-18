@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "scrapers"
+version = "0.1.0"
+description = ""
+authors = ["purple_emily <purple_emily@protonmail.com>"]
+readme = "README.md"
+packages = [{include = "scrapers", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+python-dotenv = "^1.0.1"
+aiohttp = "^3.9.3"
+asyncpg = "^0.29.0"
+loguru = "^0.7.2"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
