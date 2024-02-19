@@ -214,36 +214,6 @@ async def get_eztv_showlist(eztv_showlist_file: str, get_new_showlist: bool) -> 
     return showlist_with_imdbid
 
 
-async def split_dict_into_batches(dictionary, batch_size):
-    """
-    Split a dictionary into batches, yielding key-value pairs.
-
-    Args:
-        dictionary (dict): The dictionary to split into batches.
-
-    Yields:
-        dict: A batch of key-value pairs.
-
-    """
-    keys = list(dictionary.keys())
-    # values = list(dictionary.values())
-
-    num_full_loops = len(keys) // batch_size
-    remainder = len(keys) % batch_size
-
-    # Yield full batches
-    for i in range(num_full_loops):
-        batch_keys = keys[i * batch_size : (i + 1) * batch_size]
-        batch_values = [dictionary[key] for key in batch_keys]
-        yield dict(zip(batch_keys, batch_values))
-
-    # Yield remainder batch if exists
-    if remainder:
-        batch_keys = keys[num_full_loops * batch_size :]
-        batch_values = [dictionary[key] for key in batch_keys]
-        yield dict(zip(batch_keys, batch_values))
-
-
 async def get_showlist_api_data(torrent_queue, showlist):
     async def get_show_api_data(torrent_queue, url, rate_limit):
         async with rate_limit:
