@@ -8,9 +8,9 @@ load_dotenv(dotenv_path)
 eztv_url = os.getenv("EZTV_URL")
 
 debug_mode = os.getenv("DEBUG_MODE", "False") == "True"
-debug_processing_limit = int(os.getenv("DEBUG_PROCESSING_LIMIT", 1500))
+debug_processing_limit = int(os.getenv("DEBUG_PROCESSING_LIMIT", 150))
 
-rate_limit_per_second = int(os.getenv("RATE_LIMIT_PER_SECOND", 60))
+rate_limit_per_second = int(os.getenv("RATE_LIMIT_PER_SECOND", 1))
 
 postgres_db = os.getenv("POSTGRES_DB")
 postgres_host = os.getenv("POSTGRES_HOST")
