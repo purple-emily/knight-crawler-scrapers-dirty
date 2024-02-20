@@ -18,6 +18,7 @@ lxml = "^5.1.0"
 python = "^3.12"
 python-dotenv = "^1.0.1"
 redis = "^5.0.1"
+pydantic = "^2.6.1"
 
 
 [tool.poetry.group.dev.dependencies]
