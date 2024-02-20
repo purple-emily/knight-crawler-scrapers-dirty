@@ -5,7 +5,7 @@ import httpx
 from loguru import logger
 from lxml import html  # type: ignore
 
-from scrapers.util import config
+from scrapers.util.config import config
 from scrapers.util.show import Show
 from scrapers.util.showlist import ShowList
 
