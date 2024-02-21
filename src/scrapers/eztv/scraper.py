@@ -49,15 +49,29 @@ async def get_list_of_shows_from_eztv(showlist: ShowList):
         *(html_to_show(show_html) for show_html in tree.xpath('//tr[@name="hover"]'))
     )
 
-    new_show_count = 0
+    number_of_new_shows = 0
+    number_of_updated_shows = 0
     for show in updated_showlist:
-        if not await showlist.add_show(show):
-            logger.debug(f"Updating airing status {show=}")
-            await showlist.update_show(show.url, show.status)
+        # Try to add the show to our current showlist.
+        # If it succeeds, the show is new.
+        # If it fails we already have this show in our list, but we can update the
+        # `status` of the show without any additional GET requests.
+        if await showlist.add_show(show):
+            logger.info(
+                f"Found a new show: `{show.name}` ({number_of_new_shows} new shows so far)"
+            )
+            number_of_new_shows += 1
         else:
-            logger.debug(f"New show {show=}")
-            new_show_count += 1
-    logger.info(f"Found {new_show_count} new shows")
+            if await showlist.update_show_status(show.url, status=show.status):
+                logger.debug(
+                    f"Show `{show.name}` status was updated to: `{show.status}`"
+                )
+                number_of_updated_shows += 1
+
+    logger.info(f"Total number of new shows found: {number_of_new_shows}")
+    logger.info(
+        f"Total number of shows updated with a new status: {number_of_updated_shows}"
+    )
 
     shows_without_imdbid = showlist.get_shows_with_no_imdbid()
     if config.debug_mode:
@@ -78,11 +92,8 @@ async def get_list_of_shows_from_eztv(showlist: ShowList):
         )
 
     await asyncio.gather(
-        *(showlist.update_show(show.url, show.imdbid) for show in shows_without_imdbid)
+        *(
+            showlist.update_show_imdbid(show.url, imdbid=show.imdbid)
+            for show in shows_without_imdbid
+        )
     )
-    # Update the IMDb ID's only for now, not the show status
-    # for show in shows_without_imdbid:
-    #     pass
-
-    # At this point we have `url`, `show_name` and `status`.
-    # Missing the IMDb id

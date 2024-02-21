@@ -1,5 +1,8 @@
+from typing import Optional
+
+
 class Show:
-    def __init__(self, url: str, name: str, status: str, imdbid: str | None = None):
+    def __init__(self, url: str, name: str, status: str, imdbid: Optional[str] = None):
         """
         _summary_
 

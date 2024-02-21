@@ -67,29 +67,47 @@ class ShowList:
                 self._show_urls.add(show.url)
                 return True
             else:
-                logger.debug(f"Skipping duplicate {show=}")
                 return False
 
     async def get_shows(self) -> list[Show]:
         async with self._lock:
             return self._shows[:]
 
-    async def update_show(
-        self, url: str, status: Optional[str] = None, imdbid: Optional[str] = None
-    ):
+    async def update_show_status(self, url: str, status: str):
         """
-        Update the status and/or IMDb ID of a show with the given URL.
+        Returns:
+            bool: true if show updated
         """
-        async with self._lock:
-            for show in self._shows:
-                if show.url == url:
-                    if status is not None:
+        if url not in self._show_urls:
+            raise ValueError(f"Show with URL `{url}` not found in the list.")
+
+        for show in self._shows:
+            if show.url == url:
+                if show.status != status:
+                    async with self._lock:
                         show.status = status
-                    if imdbid is not None:
+                        return True
+                return False
+
+    async def update_show_imdbid(self, url: str, imdbid: Optional[str] = None):
+        """
+        Returns:
+            bool: true if show updated
+        """
+        if imdbid is None:
+            # No point updating the IMDb if it's None
+            return False
+
+        if url not in self._show_urls:
+            raise ValueError(f"Show with URL `{url}` not found in the list.")
+
+        for show in self._shows:
+            if show.url == url:
+                if show.imdbid != imdbid:
+                    async with self._lock:
                         show.imdbid = imdbid
-                    break
-            else:
-                raise ValueError(f"Show with URL '{url}' not found in the list.")
+                        return True
+                return False
 
     def get_shows_with_no_imdbid(self) -> list[Show]:
         return [show for show in self._shows if show.imdbid is None]
@@ -129,6 +147,7 @@ class ShowList:
             logger.debug(f"Error decoding JSON in `{filename}`")
         except FileNotFoundError:
             logger.debug(f"File does not exist `{filename}`")
+
         logger.info(f"Loaded {len(self._shows)} shows from `{filename}`")
 
     async def save_to_file(self, filename: str = "eztv_showlist.json"):
@@ -145,6 +164,7 @@ class ShowList:
             "show_urls": list(self._show_urls),
             "timestamp": self.timestamp.for_json(),
         }
+        logger.debug(f"Attempting to save the showlist to file `{filename}`")
         async with aiofiles.open(filename, "w", encoding="utf-8") as file:
             await file.write(json.dumps(data))
 
