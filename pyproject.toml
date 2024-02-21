@@ -19,6 +19,7 @@ python = "^3.12"
 python-dotenv = "^1.0.1"
 redis = "^5.0.1"
 pydantic = "^2.6.1"
+pydantic-settings = "^2.2.1"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -29,7 +30,7 @@ ruff = "^0.2.2"
 
 [tool.pyright]
 strict = ["src/scrapers/*.py"]
-typeCheckingMode = "strict"
+typeCheckingMode = "standard"
 reportMissingImports = true
 reportUnusedVariable = true
 reportUnusedFunction = true

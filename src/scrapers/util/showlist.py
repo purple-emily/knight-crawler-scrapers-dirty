@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from typing import Optional
 
 import aiofiles
 import arrow
@@ -59,17 +60,36 @@ class ShowList:
         self.timestamp: arrow.Arrow = arrow.utcnow()
         self._lock = asyncio.Lock()  # Create a lock for synchronization
 
-    async def add_show(self, show: Show):
+    async def add_show(self, show: Show) -> bool:
         async with self._lock:
             if show.url not in self._show_urls:
                 self._shows.append(show)
                 self._show_urls.add(show.url)
+                return True
             else:
-                logger.debug(f"Skipping duplicate show {show=}")
+                logger.debug(f"Skipping duplicate {show=}")
+                return False
 
     async def get_shows(self) -> list[Show]:
         async with self._lock:
             return self._shows[:]
+
+    async def update_show(
+        self, url: str, status: Optional[str] = None, imdbid: Optional[str] = None
+    ):
+        """
+        Update the status and/or IMDb ID of a show with the given URL.
+        """
+        async with self._lock:
+            for show in self._shows:
+                if show.url == url:
+                    if status is not None:
+                        show.status = status
+                    if imdbid is not None:
+                        show.imdbid = imdbid
+                    break
+            else:
+                raise ValueError(f"Show with URL '{url}' not found in the list.")
 
     def get_shows_with_no_imdbid(self) -> list[Show]:
         return [show for show in self._shows if show.imdbid is None]
@@ -89,7 +109,7 @@ class ShowList:
     def show_exists(self, show: Show) -> bool:
         return show in self._shows
 
-    async def load_from_file(self, filename: str = "showlist.json") -> None:
+    async def load_from_file(self, filename: str = "eztv_showlist.json") -> None:
         # Fix the path to the showlist file
         # Before:
         #     showlist_file='showlist.json'
@@ -98,16 +118,20 @@ class ShowList:
         if not os.path.isabs(filename):
             filename = os.path.join(os.getcwd(), filename)
 
+        logger.debug(f"Attempting to load the showlist from file `{filename}`")
         try:
             async with aiofiles.open(filename, "r", encoding="utf-8") as file:
                 data = json.loads(await file.read())
                 self._shows = [Show(**show_data) for show_data in data["shows"]]
-                # self.timestamp = data["timestamp"]
-        except json.JSONDecodeError as e:
-            logger.exception(e)
-            logger.error("Error decoding JSON. No show list loaded.")
+                self._show_urls = set(data["show_urls"])
+                self.timestamp = arrow.get(data["timestamp"])
+        except json.JSONDecodeError:
+            logger.debug(f"Error decoding JSON in `{filename}`")
+        except FileNotFoundError:
+            logger.debug(f"File does not exist `{filename}`")
+        logger.info(f"Loaded {len(self._shows)} shows from `{filename}`")
 
-    async def save_to_file(self, filename: str = "showlist.json"):
+    async def save_to_file(self, filename: str = "eztv_showlist.json"):
         # Fix the path to the showlist file
         # Before:
         #     showlist_file='showlist.json'
@@ -118,6 +142,7 @@ class ShowList:
 
         data = {
             "shows": [show.__dict__ for show in self._shows],
+            "show_urls": list(self._show_urls),
             "timestamp": self.timestamp.for_json(),
         }
         async with aiofiles.open(filename, "w", encoding="utf-8") as file:
