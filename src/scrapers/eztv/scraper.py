@@ -73,30 +73,6 @@ async def get_list_of_shows_from_eztv(showlist: ShowList):
         f"Total number of shows updated with a new status: {number_of_updated_shows}"
     )
 
-    shows_without_imdbid = showlist.get_shows_with_no_imdbid()
-    if config.debug_mode:
-        logger.debug(
-            f"Debug mode enabled. Limiting to {config.debug_processing_limit} updates"
-        )
-        shows_without_imdbid = shows_without_imdbid[0 : config.debug_processing_limit]
-    logger.info(
-        f"{len(shows_without_imdbid)} shows are missing an IMDb ID. Trying to get IMDb IDs, this may take a while..."
-    )
-    rate_limit = AsyncLimiter(config.rate_limit_per_second, 1)
-    async with httpx.AsyncClient() as client:
-        await asyncio.gather(
-            *(
-                add_imdbid_to_show(show, rate_limit, client)
-                for show in shows_without_imdbid
-            )
-        )
+    awaitshowlist.get_all_imdbids():
 
-    # try:
-    await asyncio.gather(
-        *(
-            showlist.update_show_imdbid(show.url, imdbid=show.imdbid)
-            for show in shows_without_imdbid
-        )
-    )
-    # except asyncio.exceptions.CancelledError:
-    #     raise
+    awaitshowlist.update_show_imdbid
