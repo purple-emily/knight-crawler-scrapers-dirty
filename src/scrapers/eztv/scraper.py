@@ -31,7 +31,7 @@ async def add_imdbid_to_show(show: Show, rate_limit, client):
             imdb_id = re.search(imdb_regex_pattern, html_response).group(1)
         except AttributeError:
             imdb_id = None
-
+        logger.debug(f"Found IMDb ID: `{imdb_id}` for show: `{show.name}`")
         show.imdbid = imdb_id
 
 
@@ -91,9 +91,12 @@ async def get_list_of_shows_from_eztv(showlist: ShowList):
             )
         )
 
+    # try:
     await asyncio.gather(
         *(
             showlist.update_show_imdbid(show.url, imdbid=show.imdbid)
             for show in shows_without_imdbid
         )
     )
+    # except asyncio.exceptions.CancelledError:
+    #     raise
