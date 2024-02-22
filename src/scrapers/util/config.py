@@ -14,7 +14,9 @@ class ConfigModel(BaseSettings):
     eztv_url: str = Field(default="https://eztvx.to")
     eztv_showlist_url: str = Field(default="/showlist/")
 
-    rate_limit_per_second: int = Field(default=1)
+    rate_limit_per_second: int = Field(default=3)
+
+    batch_size: int = Field(default=25)
 
     debug_mode: bool = Field(default=False)
     debug_processing_limit: int = Field(default=120)
@@ -25,10 +27,9 @@ class ConfigModel(BaseSettings):
     postgres_user: str = Field(default="knightcrawler")
     postgres_password: str = Field(default="password")
 
-    redis_host: str = Field(default="redis")
-    redis_port: int = Field(default=6379)
-    redis_db: int = Field(default=0)
-    redis_password: str = Field(default="password")
+    # Knight Crawler specific
+    torrent_source: str = Field(default="EZTV")
+    ingested_torrents_table: str = Field(default="public.ingested_torrents")
 
     @validator("eztv_url", "eztv_showlist_url", pre=True, allow_reuse=True)
     def ensure_correct_format(cls, v):

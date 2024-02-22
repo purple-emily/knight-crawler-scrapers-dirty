@@ -60,6 +60,10 @@ class ShowList:
         self.timestamp: arrow.Arrow = arrow.utcnow()
         self._lock = asyncio.Lock()  # Create a lock for synchronization
 
+    async def reset_timestamp(self):
+        async with self._lock:
+            self.timestamp = arrow.now()
+
     async def add_show(self, show: Show) -> bool:
         async with self._lock:
             if show.url not in self._show_urls:
@@ -111,6 +115,9 @@ class ShowList:
 
     def get_shows_with_no_imdbid(self) -> list[Show]:
         return [show for show in self._shows if show.imdbid is None]
+
+    def get_shows_with_imdbid(self) -> list[Show]:
+        return [show for show in self._shows if show.imdbid is not None]
 
     def search_by_url(self, url: str) -> list[Show]:
         return [show for show in self._shows if show.url == url]
@@ -173,37 +180,3 @@ class ShowList:
 
     def __len__(self):
         return len(self._shows)
-
-    async def get_all_imdbids(self):
-        # Break into batches process then save.
-        # if using redis light just put each one in when its done?
-        pass
-
-    # ~~~~~~~~~
-    # redislite ???
-    # ~~~~~~~~~
-
-    # shows_without_imdbid = showlist.get_shows_with_no_imdbid()
-    # if config.debug_mode:
-    #     logger.debug(
-    #         f"Debug mode enabled. Limiting to {config.debug_processing_limit} updates"
-    #     )
-    #     shows_without_imdbid = shows_without_imdbid[0 : config.debug_processing_limit]
-    # logger.info(
-    #     f"{len(shows_without_imdbid)} shows are missing an IMDb ID. Trying to get IMDb IDs, this may take a while..."
-    # )
-    # rate_limit = AsyncLimiter(config.rate_limit_per_second, 1)
-    # async with httpx.AsyncClient() as client:
-    #     await asyncio.gather(
-    #         *(
-    #             add_imdbid_to_show(show, rate_limit, client)
-    #             for show in shows_without_imdbid
-    #         )
-    #     )
-    #
-    # await asyncio.gather(
-    #     *(
-    #         showlist.update_show_imdbid(show.url, imdbid=show.imdbid)
-    #         for show in shows_without_imdbid
-    #     )
-    # )

@@ -15,11 +15,10 @@ asyncpg = "^0.29.0"
 httpx = "^0.26.0"
 loguru = "^0.7.2"
 lxml = "^5.1.0"
-python = "^3.12"
-python-dotenv = "^1.0.1"
-redis = "^5.0.1"
 pydantic = "^2.6.1"
 pydantic-settings = "^2.2.1"
+python = "^3.12"
+python-dotenv = "^1.0.1"
 
 
 [tool.poetry.group.dev.dependencies]

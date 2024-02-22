@@ -1,10 +1,9 @@
 import argparse
 import asyncio
 
-from loguru import logger
-
 from scrapers import logging
-from scrapers.eztv.scraper import get_list_of_shows_from_eztv
+from scrapers.scrapers import eztv
+from scrapers.services import knightcrawler
 from scrapers.util.showlist import ShowList
 
 
@@ -14,8 +13,10 @@ async def main(eztv_showlist_file: str, log_level: str) -> None:
 
     eztv_showlist: ShowList = ShowList()
     await eztv_showlist.load_from_file(eztv_showlist_file)
-    await get_list_of_shows_from_eztv(eztv_showlist)
+    await eztv.get_list_of_shows(eztv_showlist, eztv_showlist_file)
     await eztv_showlist.save_to_file(eztv_showlist_file)
+
+    await knightcrawler.scrape_eztv(eztv_showlist)
 
 
 if __name__ == "__main__":
