@@ -94,6 +94,7 @@ async def producer(queue, showlist):
 
 async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedUrls):
     (show, show_json) = scraped_show
+    info_hashes_found = set()
 
     try:
         logger.debug(
@@ -104,7 +105,7 @@ async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedU
 
         for torrent in show_json["torrents"]:
             title = torrent["title"]
-            info_hash = torrent["hash"]
+            info_hash = torrent["hash"].upper()
             size = int(torrent["size_bytes"])
             seeders = torrent["seeds"]
             leechers = torrent["peers"]
@@ -128,21 +129,23 @@ async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedU
                 # This torrent is already in the database. Continue.
                 continue
 
-            processed_torrents.append(
-                [
-                    title,
-                    config.torrent_source,
-                    "tv",
-                    info_hash,
-                    f"{size}",
-                    seeders,
-                    leechers,
-                    f"tt{show.imdbid}",
-                    False,
-                    created_at,
-                    updated_at,
-                ]
-            )
+            if info_hash not in info_hashes_found:
+                processed_torrents.append(
+                    [
+                        title,
+                        config.torrent_source,
+                        "tv",
+                        info_hash,
+                        f"{size}",
+                        seeders,
+                        leechers,
+                        f"tt{show.imdbid}",
+                        False,
+                        created_at,
+                        updated_at,
+                    ]
+                )
+                info_hashes_found.add(info_hash)
 
         async with postgres_pool.acquire() as con:
             await con.executemany(
