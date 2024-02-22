@@ -104,7 +104,7 @@ async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedU
 
         for torrent in show_json["torrents"]:
             title = torrent["title"]
-            info_hash = torrent["hash"]
+            info_hash = torrent["hash"].upper()
             size = int(torrent["size_bytes"])
             seeders = torrent["seeds"]
             leechers = torrent["peers"]
@@ -128,28 +128,25 @@ async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedU
                 # This torrent is already in the database. Continue.
                 continue
 
-            processed_torrents.append(
-                [
-                    title,
-                    config.torrent_source,
-                    "tv",
-                    info_hash,
-                    f"{size}",
-                    seeders,
-                    leechers,
-                    f"tt{show.imdbid}",
-                    False,
-                    created_at,
-                    updated_at,
-                ]
-            )
-
-        async with postgres_pool.acquire() as con:
-            await con.executemany(
-                f"""INSERT INTO {config.ingested_torrents_table} (name, source, category, info_hash, size, seeders, leechers, imdb, processed, "createdAt", "updatedAt")
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
-                processed_torrents,
-            )
+            try:
+                async with postgres_pool.acquire() as con:
+                    await con.execute(
+                        f"""INSERT INTO {config.ingested_torrents_table} (name, source, category, info_hash, size, seeders, leechers, imdb, processed, "createdAt", "updatedAt")
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
+                        title,
+                        config.torrent_source,
+                        "tv",
+                        info_hash,
+                        f"{size}",
+                        seeders,
+                        leechers,
+                        f"tt{show.imdbid}",
+                        False,
+                        created_at,
+                        updated_at,
+                    )
+            except asyncpg.exceptions.UniqueViolationError:
+                continue
 
     except KeyError:
         logger.debug(f"Found 0 torrents for the show `{show.name}`")
