@@ -5,7 +5,7 @@ from loguru import logger
 from scrapers.util.config import config
 
 
-def init(desired_log_level: str):
+def init(desired_log_level: str, role: str):
     valid_log_levels = [
         "TRACE",
         "DEBUG",
@@ -24,4 +24,4 @@ def init(desired_log_level: str):
     logger.remove()
     logger.add(sys.stderr, level=desired_log_level)
     if config.debug_mode:
-        logger.add("debug.log", mode="w", level="DEBUG")
+        logger.add("debug_{time}.log", mode="w", level="DEBUG")

@@ -19,6 +19,8 @@ pydantic = "^2.6.1"
 pydantic-settings = "^2.2.1"
 python = "^3.12"
 python-dotenv = "^1.0.1"
+aio-pika = "^9.4.0"
+jsonpickle = "^3.0.3"
 
 
 [tool.poetry.group.dev.dependencies]
