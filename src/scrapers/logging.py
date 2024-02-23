@@ -19,7 +19,7 @@ def init(desired_log_level: str, role: str):
     desired_log_level = desired_log_level.upper()
 
     if desired_log_level not in valid_log_levels:
-        desired_log_level = "INFO"
+        desired_log_level = "DEBUG"
 
     logger.remove()
     logger.add(sys.stderr, level=desired_log_level)

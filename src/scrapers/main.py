@@ -33,7 +33,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--log-level",
-        default="INFO",
+        default="DEBUG",
         help="Defaults to 'INFO'. Warning `DEBUG` is very verbose.",
     )
     # parser.add_argument(
