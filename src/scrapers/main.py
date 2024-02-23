@@ -1,6 +1,9 @@
 import argparse
 import asyncio
 
+import sniffio
+from loguru import logger
+
 from scrapers import logging
 from scrapers.scrapers import eztv
 from scrapers.services import knightcrawler
@@ -33,7 +36,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--log-level",
-        default="INFO",
+        default="DEBUG",
         help="Defaults to 'INFO'. Warning `DEBUG` is very verbose.",
     )
     # parser.add_argument(
@@ -43,5 +46,13 @@ if __name__ == "__main__":
     # )
     args = parser.parse_args()
     loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
-    loop.run_until_complete(main(args.role, args.eztv_showlist_file, args.log_level))
-    loop.close()
+    try:
+        loop.run_until_complete(
+            main(args.role, args.eztv_showlist_file, args.log_level)
+        )
+    except KeyboardInterrupt:
+        logger.info("Received exit signal, exiting")
+    except sniffio._impl.AsyncLibraryNotFoundError:
+        pass
+    finally:
+        loop.close()

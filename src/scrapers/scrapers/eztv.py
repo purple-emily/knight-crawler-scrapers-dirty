@@ -28,16 +28,25 @@ async def html_to_show(html) -> Show:
 
 async def add_imdbid_to_show(show: Show, rate_limit, client):
     async with rate_limit:
-        response = await client.get(f"{config.eztv_url}{show.url}")
-        html_response = response.text
-
-        imdb_regex_pattern = r"https://www.imdb.com/title/tt([0-9]+)/"
         try:
-            imdb_id = re.search(imdb_regex_pattern, html_response).group(1)
-        except AttributeError:
-            imdb_id = None
-        logger.debug(f"Found IMDb ID: `{imdb_id}` for show: `{show.name}`")
-        show.imdbid = imdb_id
+            response = await client.get(f"{config.eztv_url}{show.url}")
+            html_response = response.text
+
+            imdb_regex_pattern = r"https://www.imdb.com/title/tt([0-9]+)/"
+            try:
+                imdb_id = re.search(imdb_regex_pattern, html_response).group(1)
+            except AttributeError:
+                imdb_id = None
+            logger.debug(f"Found IMDb ID: `{imdb_id}` for show: `{show.name}`")
+            show.imdbid = imdb_id
+        except httpx.HTTPError as e:
+            logger.exception(e)
+            logger.error(
+                f"There appears to be an error accessing EZTV at the URL `{config.eztv_url}{show.url}"
+            )
+            logger.error(
+                "The script will attempt to continue, but please can you post the logs in Discord and tag @TheBestEmily"
+            )
 
 
 async def get_all_imdbids(showlist: ShowList, eztv_showlist_file):
@@ -101,44 +110,55 @@ async def get_list_of_shows(showlist: ShowList, eztv_showlist_file: str):
         showlist_url = f"{config.eztv_url}{config.eztv_showlist_url}"
         logger.info(f"Updating showlist from `{showlist_url}`")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(showlist_url)
-            html_response = response.text
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(showlist_url)
+                html_response = response.text
+            # except json.decoder.JSONDecodeError:
+            #     raise
 
-        tree = html.fromstring(html_response)
+            tree = html.fromstring(html_response)
 
-        updated_showlist = await asyncio.gather(
-            *(
-                html_to_show(show_html)
-                for show_html in tree.xpath('//tr[@name="hover"]')
-            )
-        )
-
-        number_of_new_shows = 0
-        number_of_updated_shows = 0
-        for show in updated_showlist:
-            # Try to add the show to our current showlist.
-            # If it succeeds, the show is new.
-            # If it fails we already have this show in our list, but we can update the
-            # `status` of the show without any additional GET requests.
-            if await showlist.add_show(show):
-                logger.info(
-                    f"Found a new show: `{show.name}` ({number_of_new_shows} new shows so far)"
+            updated_showlist = await asyncio.gather(
+                *(
+                    html_to_show(show_html)
+                    for show_html in tree.xpath('//tr[@name="hover"]')
                 )
-                number_of_new_shows += 1
-            else:
-                if await showlist.update_show_status(show.url, status=show.status):
-                    logger.debug(
-                        f"Show `{show.name}` status was updated to: `{show.status}`"
+            )
+
+            number_of_new_shows = 0
+            number_of_updated_shows = 0
+            for show in updated_showlist:
+                # Try to add the show to our current showlist.
+                # If it succeeds, the show is new.
+                # If it fails we already have this show in our list, but we can update the
+                # `status` of the show without any additional GET requests.
+                if await showlist.add_show(show):
+                    logger.info(
+                        f"Found a new show: `{show.name}` ({number_of_new_shows} new shows so far)"
                     )
-                    number_of_updated_shows += 1
+                    number_of_new_shows += 1
+                else:
+                    if await showlist.update_show_status(show.url, status=show.status):
+                        logger.debug(
+                            f"Show `{show.name}` status was updated to: `{show.status}`"
+                        )
+                        number_of_updated_shows += 1
 
-        logger.info(f"Total number of new shows found: {number_of_new_shows}")
-        logger.info(
-            f"Total number of shows updated with a new status: {number_of_updated_shows}"
-        )
+            logger.info(f"Total number of new shows found: {number_of_new_shows}")
+            logger.info(
+                f"Total number of shows updated with a new status: {number_of_updated_shows}"
+            )
 
-        await showlist.reset_timestamp()
+            await showlist.reset_timestamp()
+        except httpx.HTTPError as e:
+            logger.exception(e)
+            logger.error(
+                f"There appears to be an error accessing EZTV at the URL `{showlist_url}`"
+            )
+            logger.error(
+                "The script will attempt to continue, but please can you post the logs in Discord and tag @TheBestEmily"
+            )
 
     await get_all_imdbids(showlist, eztv_showlist_file)
 
@@ -146,10 +166,12 @@ async def get_list_of_shows(showlist: ShowList, eztv_showlist_file: str):
 async def get_api_data(show: Show, rate_limit, client):
     async with rate_limit:
         # https://eztvx.to/api/get-torrents?imdb_id=6048596
-        response = await client.get(
-            f"{config.eztv_url}/api/get-torrents?imdb_id={show.imdbid}"
-        )
         try:
+            response = await client.get(
+                f"{config.eztv_url}/api/get-torrents?imdb_id={show.imdbid}"
+            )
             return response.json()
         except json.decoder.JSONDecodeError:
+            raise
+        except httpx.HTTPError:
             raise

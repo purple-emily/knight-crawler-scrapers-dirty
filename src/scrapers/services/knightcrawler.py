@@ -18,6 +18,16 @@ from scrapers.util.show import Show
 from scrapers.util.showlist import ShowList
 
 
+class HTTPErrorCount:
+    def __init__(self):
+        self.count: int = 0
+        self._lock = asyncio.Lock()
+
+    async def increase(self):
+        async with self._lock:
+            self.count += 1
+
+
 class CompletedUrls:
     def __init__(self):
         self._completed_urls: set[str] = set()
@@ -67,13 +77,32 @@ class CompletedUrls:
             await file.write(json.dumps(data))
 
 
-async def produce(show: Show, rate_limit, client):
+async def produce(
+    show: Show, rate_limit, client, channel, queue, http_error_count: HTTPErrorCount
+):
     logger.debug(f"Scraping show: `{show.name}` with IMDb id: `{show.imdbid}`")
     try:
         show_json = await eztv.get_api_data(show, rate_limit, client)
+
+        await channel.default_exchange.publish(
+            aio_pika.Message(body=jsonpickle.encode((show, show_json)).encode()),
+            routing_key=queue.name,
+        )
     except json.decoder.JSONDecodeError:
         return
-    return (show, show_json)
+    except httpx.HTTPError as e:
+        if http_error_count.count > 5:
+            logger.error("We are encountering significant errors in accessing EZTV.")
+            logger.error("The script will now self terminate")
+            raise KeyboardInterrupt
+        logger.exception(e)
+        logger.error(
+            f"There appears to be an error accessing EZTV at the URL `{showlist_url}`"
+        )
+        logger.error(
+            f"The script will attempt to continue (attempt {http_error_count.count}/5), but please can you post the logs in Discord and tag @TheBestEmily"
+        )
+        await http_error_count.increase()
 
 
 async def producer(channel, queue, showlist):
@@ -81,26 +110,21 @@ async def producer(channel, queue, showlist):
 
     total_number_of_batches = len(list(itertools.batched(showlist, config.batch_size)))
 
+    http_error_count = HTTPErrorCount()
+
     async with httpx.AsyncClient() as client:
         for batch_number, batch_of_shows in enumerate(
             itertools.batched(showlist, config.batch_size), 1
         ):
-            scraped_shows_batch = await asyncio.gather(
-                *(produce(show, rate_limit, client) for show in batch_of_shows)
-            )
-
-            await channel.default_exchange.publish(
-                aio_pika.Message(body=jsonpickle.encode(scraped_shows_batch).encode()),
-                routing_key=queue.name,
+            await asyncio.gather(
+                *(
+                    produce(show, rate_limit, client, channel, queue, http_error_count)
+                    for show in batch_of_shows
+                )
             )
 
             percentage_done = (batch_number / total_number_of_batches) * 100
             logger.info(f"Progress: {percentage_done:.2f}% / 100%")
-
-    await channel.default_exchange.publish(
-        aio_pika.Message(body=jsonpickle.encode(None).encode()),
-        routing_key=queue.name,
-    )
 
 
 async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedUrls):
@@ -169,22 +193,16 @@ async def consumer(channel, queue, postgres_pool, completed_urls):
         # Cancel consuming after __aexit__
         async for message in queue_iter:
             async with message.process():
-                batch_of_shows = jsonpickle.decode(message.body)
+                show = jsonpickle.decode(message.body)
 
-                if batch_of_shows is None:
+                if show is None:
                     await channel.default_exchange.publish(
                         aio_pika.Message(body=jsonpickle.encode(None).encode()),
                         routing_key=queue.name,
                     )
                     break  # End the infinite loop for THIS consumer
 
-                await asyncio.gather(
-                    *(
-                        consume(show, postgres_pool, completed_urls)
-                        for show in batch_of_shows
-                    )
-                )
-
+                await consume(show, postgres_pool, completed_urls)  # type: ignore
                 await completed_urls.save_to_file()
 
     # while True:  # Can't use `while not queue.empty()` as it starts empty and the consumers die before any data is provided by the producer
