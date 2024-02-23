@@ -1,5 +1,6 @@
 import asyncio
 import itertools
+import json
 import re
 from datetime import timedelta
 
@@ -148,4 +149,7 @@ async def get_api_data(show: Show, rate_limit, client):
         response = await client.get(
             f"{config.eztv_url}/api/get-torrents?imdb_id={show.imdbid}"
         )
-        return response.json()
+        try:
+            return response.json()
+        except json.decoder.JSONDecodeError:
+            raise

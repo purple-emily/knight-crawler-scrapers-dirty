@@ -27,6 +27,8 @@ class ConfigModel(BaseSettings):
     postgres_user: str = Field(default="knightcrawler")
     postgres_password: str = Field(default="password")
 
+    rabbit_uri: str = Field(default="amqp://guest:guest@rabbitmq:5672/?heartbeat=30")
+
     # Knight Crawler specific
     torrent_source: str = Field(default="EZTV")
     ingested_torrents_table: str = Field(default="public.ingested_torrents")

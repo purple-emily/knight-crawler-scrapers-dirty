@@ -4,9 +4,11 @@ import itertools
 import json
 import os
 
+import aio_pika
 import aiofiles
 import asyncpg
 import httpx
+import jsonpickle
 from aiolimiter import AsyncLimiter
 from loguru import logger
 
@@ -65,13 +67,16 @@ class CompletedUrls:
             await file.write(json.dumps(data))
 
 
-async def produce(show: Show, rate_limit, client, queue):
+async def produce(show: Show, rate_limit, client):
     logger.debug(f"Scraping show: `{show.name}` with IMDb id: `{show.imdbid}`")
-    show_json = await eztv.get_api_data(show, rate_limit, client)
+    try:
+        show_json = await eztv.get_api_data(show, rate_limit, client)
+    except json.decoder.JSONDecodeError:
+        return
     return (show, show_json)
 
 
-async def producer(queue, showlist):
+async def producer(channel, queue, showlist):
     rate_limit = AsyncLimiter(config.rate_limit_per_second, 1)
 
     total_number_of_batches = len(list(itertools.batched(showlist, config.batch_size)))
@@ -81,15 +86,21 @@ async def producer(queue, showlist):
             itertools.batched(showlist, config.batch_size), 1
         ):
             scraped_shows_batch = await asyncio.gather(
-                *(produce(show, rate_limit, client, queue) for show in batch_of_shows)
+                *(produce(show, rate_limit, client) for show in batch_of_shows)
             )
 
-            await queue.put(scraped_shows_batch)
+            await channel.default_exchange.publish(
+                aio_pika.Message(body=jsonpickle.encode(scraped_shows_batch).encode()),
+                routing_key=queue.name,
+            )
 
             percentage_done = (batch_number / total_number_of_batches) * 100
             logger.info(f"Progress: {percentage_done:.2f}% / 100%")
 
-    await queue.put(None)
+    await channel.default_exchange.publish(
+        aio_pika.Message(body=jsonpickle.encode(None).encode()),
+        routing_key=queue.name,
+    )
 
 
 async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedUrls):
@@ -99,8 +110,6 @@ async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedU
         logger.debug(
             f"Found {len(show_json["torrents"])} torrents for the show `{show.name}`"
         )
-
-        processed_torrents = []
 
         for torrent in show_json["torrents"]:
             title = torrent["title"]
@@ -155,25 +164,47 @@ async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedU
         logger.debug(f"`{show.name}` completed.")
 
 
-async def consumer(queue, postgres_pool, completed_urls):
-    while True:  # Can't use `while not queue.empty()` as it starts empty and the consumers die before any data is provided by the producer
-        batch_of_shows = await queue.get()
+async def consumer(channel, queue, postgres_pool, completed_urls):
+    async with queue.iterator() as queue_iter:
+        # Cancel consuming after __aexit__
+        async for message in queue_iter:
+            async with message.process():
+                batch_of_shows = jsonpickle.decode(message.body)
 
-        if batch_of_shows is None:
-            queue.task_done()  # Needed to kill all the consumers
-            await queue.put(None)  # Needed to kill all the consumers
-            break  # End the infinite loop for THIS consumer
+                if batch_of_shows is None:
+                    await channel.default_exchange.publish(
+                        aio_pika.Message(body=jsonpickle.encode(None).encode()),
+                        routing_key=queue.name,
+                    )
+                    break  # End the infinite loop for THIS consumer
 
-        await asyncio.gather(
-            *(consume(show, postgres_pool, completed_urls) for show in batch_of_shows)
-        )
+                await asyncio.gather(
+                    *(
+                        consume(show, postgres_pool, completed_urls)
+                        for show in batch_of_shows
+                    )
+                )
 
-        await completed_urls.save_to_file()
+                await completed_urls.save_to_file()
 
-        queue.task_done()
+    # while True:  # Can't use `while not queue.empty()` as it starts empty and the consumers die before any data is provided by the producer
+    #     batch_of_shows = await queue.get()
+
+    #     if batch_of_shows is None:
+    #         queue.task_done()  # Needed to kill all the consumers
+    #         await queue.put(None)  # Needed to kill all the consumers
+    #         break  # End the infinite loop for THIS consumer
+
+    #     await asyncio.gather(
+    #         *(consume(show, postgres_pool, completed_urls) for show in batch_of_shows)
+    #     )
+
+    #     await completed_urls.save_to_file()
+
+    #     queue.task_done()
 
 
-async def scrape_eztv(showlist: ShowList):
+async def scrape_eztv(showlist: ShowList, loop: asyncio.AbstractEventLoop):
     completed_urls: CompletedUrls = CompletedUrls()
     await completed_urls.load_from_file()
 
@@ -194,19 +225,34 @@ async def scrape_eztv(showlist: ShowList):
         f"{len(shows_with_imdbid)} shows have not been scraped. Starting the scraper, this may take a while..."
     )
 
-    queue = asyncio.Queue()
+    mq_connection: aio_pika.RobustConnection = await aio_pika.connect_robust(
+        config.rabbit_uri, loop=loop
+    )
 
-    async with asyncpg.create_pool(
-        user=config.postgres_user,
-        password=config.postgres_password,
-        database=config.postgres_db,
-        host=config.postgres_host,
-        port=config.postgres_port,
-        command_timeout=60,
-    ) as postgres_pool:
-        producer_task = asyncio.create_task(producer(queue, shows_with_imdbid))
-        consumer_task = asyncio.create_task(
-            consumer(queue, postgres_pool, completed_urls)
-        )
+    async with mq_connection:
+        channel = await mq_connection.channel()
+        queue = await channel.declare_queue("eztvpy")
+        await producer(channel, queue, shows_with_imdbid)
 
-        await asyncio.gather(producer_task, consumer_task)
+
+async def consume_eztv(showlist: ShowList, loop: asyncio.AbstractEventLoop):
+    completed_urls: CompletedUrls = CompletedUrls()
+    await completed_urls.load_from_file()
+
+    mq_connection: aio_pika.RobustConnection = await aio_pika.connect_robust(
+        config.rabbit_uri, loop=loop
+    )
+
+    async with mq_connection:
+        async with asyncpg.create_pool(
+            user=config.postgres_user,
+            password=config.postgres_password,
+            database=config.postgres_db,
+            host=config.postgres_host,
+            port=config.postgres_port,
+            command_timeout=60,
+        ) as postgres_pool:
+            channel = await mq_connection.channel()
+            queue = await channel.declare_queue("eztvpy")
+            logger.info("Consumer is running...")
+            await consumer(channel, queue, postgres_pool, completed_urls)
