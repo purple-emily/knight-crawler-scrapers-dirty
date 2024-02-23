@@ -126,6 +126,12 @@ async def producer(channel, queue, showlist):
             percentage_done = (batch_number / total_number_of_batches) * 100
             logger.info(f"Progress: {percentage_done:.2f}% / 100%")
 
+    # Kill signal for consumers
+    await channel.default_exchange.publish(
+        aio_pika.Message(body=jsonpickle.encode(None).encode()),
+        routing_key=queue.name,
+    )
+
 
 async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedUrls):
     (show, show_json) = scraped_show
