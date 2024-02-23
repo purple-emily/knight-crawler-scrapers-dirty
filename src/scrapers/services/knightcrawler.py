@@ -9,6 +9,7 @@ import aiofiles
 import asyncpg
 import httpx
 import jsonpickle
+from aio_pika.abc import AbstractRobustConnection
 from aiolimiter import AsyncLimiter
 from loguru import logger
 
