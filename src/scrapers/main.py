@@ -54,5 +54,7 @@ if __name__ == "__main__":
         logger.info("Received exit signal, exiting")
     except sniffio._impl.AsyncLibraryNotFoundError:
         pass
+    except RuntimeError:
+        pass
     finally:
         loop.close()
