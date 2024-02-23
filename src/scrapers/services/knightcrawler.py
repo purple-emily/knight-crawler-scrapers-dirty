@@ -67,13 +67,17 @@ class CompletedUrls:
             await file.write(json.dumps(data))
 
 
-async def produce(show: Show, rate_limit, client):
+async def produce(show: Show, rate_limit, client, channel, queue):
     logger.debug(f"Scraping show: `{show.name}` with IMDb id: `{show.imdbid}`")
     try:
         show_json = await eztv.get_api_data(show, rate_limit, client)
     except json.decoder.JSONDecodeError:
         return
-    return (show, show_json)
+
+    await channel.default_exchange.publish(
+        aio_pika.Message(body=jsonpickle.encode((show, show_json)).encode()),
+        routing_key=queue.name,
+    )
 
 
 async def producer(channel, queue, showlist):
@@ -85,22 +89,15 @@ async def producer(channel, queue, showlist):
         for batch_number, batch_of_shows in enumerate(
             itertools.batched(showlist, config.batch_size), 1
         ):
-            scraped_shows_batch = await asyncio.gather(
-                *(produce(show, rate_limit, client) for show in batch_of_shows)
-            )
-
-            await channel.default_exchange.publish(
-                aio_pika.Message(body=jsonpickle.encode(scraped_shows_batch).encode()),
-                routing_key=queue.name,
+            await asyncio.gather(
+                *(
+                    produce(show, rate_limit, client, channel, queue)
+                    for show in batch_of_shows
+                )
             )
 
             percentage_done = (batch_number / total_number_of_batches) * 100
             logger.info(f"Progress: {percentage_done:.2f}% / 100%")
-
-    await channel.default_exchange.publish(
-        aio_pika.Message(body=jsonpickle.encode(None).encode()),
-        routing_key=queue.name,
-    )
 
 
 async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedUrls):
@@ -169,22 +166,16 @@ async def consumer(channel, queue, postgres_pool, completed_urls):
         # Cancel consuming after __aexit__
         async for message in queue_iter:
             async with message.process():
-                batch_of_shows = jsonpickle.decode(message.body)
+                show = jsonpickle.decode(message.body)
 
-                if batch_of_shows is None:
+                if show is None:
                     await channel.default_exchange.publish(
                         aio_pika.Message(body=jsonpickle.encode(None).encode()),
                         routing_key=queue.name,
                     )
                     break  # End the infinite loop for THIS consumer
 
-                await asyncio.gather(
-                    *(
-                        consume(show, postgres_pool, completed_urls)
-                        for show in batch_of_shows
-                    )
-                )
-
+                await consume(show, postgres_pool, completed_urls)  # type: ignore
                 await completed_urls.save_to_file()
 
     # while True:  # Can't use `while not queue.empty()` as it starts empty and the consumers die before any data is provided by the producer
