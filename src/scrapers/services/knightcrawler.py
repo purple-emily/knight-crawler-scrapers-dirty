@@ -249,7 +249,7 @@ async def scrape_eztv(showlist: ShowList, loop: asyncio.AbstractEventLoop):
         f"{len(shows_with_imdbid)} shows have not been scraped. Starting the scraper, this may take a while..."
     )
 
-    mq_connection: aio_pika.RobustConnection = await aio_pika.connect_robust(
+    mq_connection: AbstractRobustConnection = await aio_pika.connect_robust(
         config.rabbit_uri, loop=loop
     )
 
@@ -263,7 +263,7 @@ async def consume_eztv(showlist: ShowList, loop: asyncio.AbstractEventLoop):
     completed_urls: CompletedUrls = CompletedUrls()
     await completed_urls.load_from_file()
 
-    mq_connection: aio_pika.RobustConnection = await aio_pika.connect_robust(
+    mq_connection: AbstractRobustConnection = await aio_pika.connect_robust(
         config.rabbit_uri, loop=loop
     )
 
