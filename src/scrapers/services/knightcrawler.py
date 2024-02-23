@@ -97,7 +97,7 @@ async def produce(
             raise KeyboardInterrupt
         logger.exception(e)
         logger.error(
-            f"There appears to be an error accessing EZTV at the URL `{showlist_url}`"
+            f"There appears to be an error accessing EZTV at the URL `{config.eztv_url}/api/get-torrents?imdb_id={show.imdbid}`"
         )
         logger.error(
             f"The script will attempt to continue (attempt {http_error_count.count}/5), but please can you post the logs in Discord and tag @TheBestEmily"
