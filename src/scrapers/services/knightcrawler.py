@@ -9,6 +9,7 @@ import aiofiles
 import asyncpg
 import httpx
 import jsonpickle
+from aio_pika.abc import AbstractRobustConnection
 from aiolimiter import AsyncLimiter
 from loguru import logger
 
@@ -97,7 +98,7 @@ async def produce(
             raise KeyboardInterrupt
         logger.exception(e)
         logger.error(
-            f"There appears to be an error accessing EZTV at the URL `{showlist_url}`"
+            f"There appears to be an error accessing EZTV at the URL `{config.eztv_url}/api/get-torrents?imdb_id={show.imdbid}`"
         )
         logger.error(
             f"The script will attempt to continue (attempt {http_error_count.count}/5), but please can you post the logs in Discord and tag @TheBestEmily"
@@ -125,6 +126,12 @@ async def producer(channel, queue, showlist):
 
             percentage_done = (batch_number / total_number_of_batches) * 100
             logger.info(f"Progress: {percentage_done:.2f}% / 100%")
+
+    # Kill signal for consumers
+    await channel.default_exchange.publish(
+        aio_pika.Message(body=jsonpickle.encode(None).encode()),
+        routing_key=queue.name,
+    )
 
 
 async def consume(scraped_show: tuple, postgres_pool, completed_urls: CompletedUrls):
@@ -243,7 +250,7 @@ async def scrape_eztv(showlist: ShowList, loop: asyncio.AbstractEventLoop):
         f"{len(shows_with_imdbid)} shows have not been scraped. Starting the scraper, this may take a while..."
     )
 
-    mq_connection: aio_pika.RobustConnection = await aio_pika.connect_robust(
+    mq_connection: AbstractRobustConnection = await aio_pika.connect_robust(
         config.rabbit_uri, loop=loop
     )
 
@@ -257,7 +264,7 @@ async def consume_eztv(showlist: ShowList, loop: asyncio.AbstractEventLoop):
     completed_urls: CompletedUrls = CompletedUrls()
     await completed_urls.load_from_file()
 
-    mq_connection: aio_pika.RobustConnection = await aio_pika.connect_robust(
+    mq_connection: AbstractRobustConnection = await aio_pika.connect_robust(
         config.rabbit_uri, loop=loop
     )
 
