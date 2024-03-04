@@ -2,10 +2,10 @@ import sys
 
 from loguru import logger
 
-from scrapers.util.config import config
+from scrapers.config import config
 
 
-def init(desired_log_level: str, role: str):
+def init(desired_log_level: str, process: str):
     valid_log_levels = [
         "TRACE",
         "DEBUG",
@@ -24,4 +24,7 @@ def init(desired_log_level: str, role: str):
     logger.remove()
     logger.add(sys.stderr, level=desired_log_level)
     if config.debug_mode:
-        logger.add("debug_{time}.log", mode="w", level="DEBUG")
+        if process == "consumer":
+            logger.add("debug_consumer_{time}.log", mode="w", level="DEBUG")
+        elif process == "producer":
+            logger.add("debug_producer_{time}.log", mode="w", level="DEBUG")
