@@ -1,177 +1,141 @@
 import asyncio
-import itertools
-import json
-import re
-from datetime import timedelta
+from collections import Counter
+from itertools import batched
+from pathlib import Path
 
-import arrow
 import httpx
+import pydantic
 from aiolimiter import AsyncLimiter
+from arrow import Arrow
 from loguru import logger
-from lxml import html
+from lxml import html  # type: ignore
 
-from scrapers.util.config import config
-from scrapers.util.show import Show
-from scrapers.util.showlist import ShowList
-from scrapers.util.util import readable_timedelta
-
-
-async def html_to_show(html) -> Show:
-    url_element = html.xpath(".//td[@class='forum_thread_post']/a")[0]
-    url = url_element.get("href")
-    show_name = url_element.text_content()
-    status_element = html.xpath(".//td[@class='forum_thread_post']/font")[0]
-    status = status_element.text.strip()
-
-    return Show(url=url, name=show_name, status=status)
+from scrapers.config import config
+from scrapers.models.media import Media
+from scrapers.models.media_collection import MediaCollection
+from scrapers.utility.message_queue import RabbitInterface
 
 
-async def add_imdbid_to_show(show: Show, rate_limit, client):
-    async with rate_limit:
-        try:
-            response = await client.get(f"{config.eztv_url}{show.url}")
-            html_response = response.text
+async def eztv_scraper(data_directory: Path, rabbit_interface: RabbitInterface) -> None:
+    logger.info("Starting EZTV scraper")
 
-            imdb_regex_pattern = r"https://www.imdb.com/title/tt([0-9]+)/"
-            try:
-                imdb_id = re.search(imdb_regex_pattern, html_response).group(1)
-            except AttributeError:
-                imdb_id = None
-            logger.debug(f"Found IMDb ID: `{imdb_id}` for show: `{show.name}`")
-            show.imdbid = imdb_id
-        except httpx.HTTPError as e:
-            logger.exception(e)
-            logger.error(
-                f"There appears to be an error accessing EZTV at the URL `{config.eztv_url}{show.url}"
-            )
-            logger.error(
-                "The script will attempt to continue, but please can you post the logs in Discord and tag @TheBestEmily"
-            )
-
-
-async def get_all_imdbids(showlist: ShowList, eztv_showlist_file):
-    shows_without_imdbid = showlist.get_shows_with_no_imdbid()
-
-    if len(shows_without_imdbid) == 0:
-        logger.info("No shows need an IMDb update!")
-        return
-
-    # Limit the processing limit for debugging
-    if config.debug_mode:
-        logger.debug(
-            f"Debug mode enabled. Limiting to {config.debug_processing_limit} updates"
-        )
-        shows_without_imdbid = shows_without_imdbid[0 : config.debug_processing_limit]
-
-    logger.info(
-        f"{len(shows_without_imdbid)} shows are missing an IMDb ID. Trying to get IMDb IDs, this may take a while..."
+    eztv_collection: MediaCollection = await MediaCollection.load_from_file(
+        "eztv", data_directory
     )
+    collection_lock = asyncio.Lock()
 
-    rate_limit = AsyncLimiter(config.rate_limit_per_second, 1)
+    http_rate_limit: AsyncLimiter = AsyncLimiter(config.rate_limit_per_second, 1)
 
-    total_number_of_batches = len(
-        list(itertools.batched(shows_without_imdbid, config.batch_size))
+    # If the EZTV showlist is more than 4 hours out of date or no data exists
+    if await eztv_collection.is_expired(collection_lock):
+        await get_list_of_shows(eztv_collection, collection_lock, http_rate_limit)
+        await eztv_collection.save_to_file("eztv", collection_lock)
+
+    missing_imdb_ids: list[str] = await eztv_collection.missing_imdbs(collection_lock)
+    logger.debug(
+        f"Beginning search for {len(missing_imdb_ids)} IMDB id's. This may take a while..."
     )
+    # Split the missing_imdb_ids into smaller batches. This minimises data loss if
+    # the program to crash or the user to quits the program in the middle of the process
+    total_number_of_batches = len(list(batched(missing_imdb_ids, config.batch_size)))
 
-    for batch_number, batch_of_shows in enumerate(
-        itertools.batched(shows_without_imdbid, config.batch_size), 1
-    ):
-        async with httpx.AsyncClient() as client:
-            await asyncio.gather(
-                *(
-                    add_imdbid_to_show(show, rate_limit, client)
-                    for show in batch_of_shows
-                )
-            )
-
-        await asyncio.gather(
-            *(
-                showlist.update_show_imdbid(show.url, imdbid=show.imdbid)
-                for show in shows_without_imdbid
-            )
+    for loop_number, urls in enumerate(batched(missing_imdb_ids, config.batch_size), 1):
+        found_imdbs = await asyncio.gather(
+            *(find_imdb_id(url, collection_lock) for url in urls)
         )
 
-        await showlist.save_to_file(eztv_showlist_file)
+        print(found_imdbs)
 
-        percentage_done = (batch_number / total_number_of_batches) * 100
-        logger.info(f"Progress: {percentage_done:.2f}% / 100%")
+        percentage_done = (loop_number / total_number_of_batches) * 100
+        logger.debug(f"Collecting IMDB id's {percentage_done:.2f}% / 100%")
+
+    # # Showlist is now updated. Proceed with normal code
+    # for url, media in eztv_collection.collection.items():
+    #     pass
 
 
-async def get_list_of_shows(showlist: ShowList, eztv_showlist_file: str):
-    current_time = arrow.now()
-    time_difference = current_time - showlist.timestamp
-    max_age = timedelta(hours=4)
+async def find_imdb_id(url: str, collection_lock: asyncio.Lock):
+    return {url: "fakeimdb"}
 
-    logger.info(
-        f"Showlist is `{readable_timedelta(time_difference)}` old. Max configured age is {readable_timedelta(max_age)}"
+
+async def get_list_of_shows(
+    eztv_collection: MediaCollection,
+    collection_lock: asyncio.Lock,
+    http_rate_limit: AsyncLimiter,
+) -> None:
+    logger.info("Pulling new list of shows from EZTV")
+
+    # Update the EZTV showlist
+    eztv_showlist_url = f"{config.eztv_base_url}{config.eztv_showlist_route}"
+    async with http_rate_limit:
+        async with httpx.AsyncClient() as httpx_client:
+            response = await httpx_client.get(eztv_showlist_url)
+            # If we have anything other than a 200 response, cancel scraping
+            if response.status_code != 200:
+                logger.error(
+                    f"There was an error accessing EZTV. Error code: {response.status_code}"
+                )
+                return
+            html_response: str = response.text
+
+    lxml_html_tree: list[html.HtmlElement] = html.fromstring(html_response).xpath(  # type: ignore
+        '//tr[@name="hover"]'
     )
 
-    if time_difference > max_age:
-        showlist_url = f"{config.eztv_url}{config.eztv_showlist_url}"
-        logger.info(f"Updating showlist from `{showlist_url}`")
+    async def process_lxml_html_element(
+        lxml_html_element: html.HtmlElement,
+        eztv_collection: MediaCollection,
+        collection_lock: asyncio.Lock,
+    ) -> int:
+        # 0 = no change
+        # 1 = updated
+        # 2 = new
+        # 3 = error
+        try:
+            _first_element: html.HtmlElement = lxml_html_element.xpath(  # type: ignore
+                ".//td[@class='forum_thread_post']/a"
+            )[0]
+            url: str = f"{config.eztv_base_url}{_first_element.get('href')}"  # type: ignore
+
+            title: str = _first_element.text_content()
+
+            _second_element: html.HtmlElement = lxml_html_element.xpath(  # type: ignore
+                ".//td[@class='forum_thread_post']/font"
+            )[0]
+            status: str = _second_element.text.strip()
+
+            media: Media = Media(url=url, title=title, type="tv", status=status)  # type: ignore
+        except pydantic.ValidationError:
+            return 3
+
+        if await eztv_collection.add_media(media, collection_lock):
+            return 2
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(showlist_url)
-                html_response = response.text
-            # except json.decoder.JSONDecodeError:
-            #     raise
+            if await eztv_collection.update_media(media, collection_lock):
+                return 1
+        except KeyError:
+            return 3
 
-            tree = html.fromstring(html_response)
+        return 0
 
-            updated_showlist = await asyncio.gather(
-                *(
-                    html_to_show(show_html)
-                    for show_html in tree.xpath('//tr[@name="hover"]')
-                )
-            )
+    found_media_response: list[int] = await asyncio.gather(
+        *(
+            process_lxml_html_element(html_element, eztv_collection, collection_lock)
+            for html_element in lxml_html_tree
+        )
+    )
 
-            number_of_new_shows = 0
-            number_of_updated_shows = 0
-            for show in updated_showlist:
-                # Try to add the show to our current showlist.
-                # If it succeeds, the show is new.
-                # If it fails we already have this show in our list, but we can update the
-                # `status` of the show without any additional GET requests.
-                if await showlist.add_show(show):
-                    logger.info(
-                        f"Found a new show: `{show.name}` ({number_of_new_shows} new shows so far)"
-                    )
-                    number_of_new_shows += 1
-                else:
-                    if await showlist.update_show_status(show.url, status=show.status):
-                        logger.debug(
-                            f"Show `{show.name}` status was updated to: `{show.status}`"
-                        )
-                        number_of_updated_shows += 1
+    logger.debug(f"{len(found_media_response)} EZTV shows found")
+    # 0 = no change
+    # 1 = updated
+    # 2 = new
+    # 3 = error
+    responses_count = dict(Counter(found_media_response))
+    logger.debug(f"EZTV: {responses_count.get(2, 0)} new")
+    logger.debug(f"EZTV: {responses_count.get(1, 0)} updated")
+    logger.debug(f"EZTV: {responses_count.get(0, 0)} unchanged")
+    logger.debug(f"EZTV: {responses_count.get(3, 0)} errors")
 
-            logger.info(f"Total number of new shows found: {number_of_new_shows}")
-            logger.info(
-                f"Total number of shows updated with a new status: {number_of_updated_shows}"
-            )
-
-            await showlist.reset_timestamp()
-        except httpx.HTTPError as e:
-            logger.exception(e)
-            logger.error(
-                f"There appears to be an error accessing EZTV at the URL `{showlist_url}`"
-            )
-            logger.error(
-                "The script will attempt to continue, but please can you post the logs in Discord and tag @TheBestEmily"
-            )
-
-    await get_all_imdbids(showlist, eztv_showlist_file)
-
-
-async def get_api_data(show: Show, rate_limit, client):
-    async with rate_limit:
-        # https://eztvx.to/api/get-torrents?imdb_id=6048596
-        try:
-            response = await client.get(
-                f"{config.eztv_url}/api/get-torrents?imdb_id={show.imdbid}"
-            )
-            return response.json()
-        except json.decoder.JSONDecodeError:
-            raise
-        except httpx.HTTPError:
-            raise
+    async with collection_lock:
+        eztv_collection.last_updated = Arrow.utcnow().datetime

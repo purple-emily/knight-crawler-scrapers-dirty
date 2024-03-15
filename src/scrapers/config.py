@@ -10,6 +10,8 @@ class ConfigModel(BaseSettings):  # pragma: no cover
 
     rate_limit_per_second: int = Field(default=3)
 
+    data_cache_hours: int = Field(default=4)
+
     batch_size: int = Field(default=25)
 
     debug_mode: bool = Field(default=False)

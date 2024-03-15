@@ -11,15 +11,8 @@ from scrapers.models.media_collection import MediaCollection
 
 
 @pytest.mark.asyncio
-async def test_add():
-    show1: Media = Media(
-        url="https://eztvx.to/shows/2583/breaking-bad/",
-        title="Breaking Bad",
-        type="tv",
-        imdb="tt0903747",
-        status="Ended",
-        last_updated=arrow.get("2024-03-12 09:58:41.306122+00:00").datetime,
-    )
+async def test_add(media_examples):
+    show1, *_ = media_examples
 
     collection_lock = asyncio.Lock()
     eztv_collection: MediaCollection = MediaCollection()
@@ -51,8 +44,7 @@ async def test_successful_save_and_load(media_examples, tmp_path):
         file_name, tmp_path
     )
 
-    assert eztv_collection.media_collection == new_eztv_collection.media_collection
-    assert eztv_collection.all_urls == new_eztv_collection.all_urls
+    assert eztv_collection.collection == new_eztv_collection.collection
     assert eztv_collection.last_updated == new_eztv_collection.last_updated
 
 
@@ -66,8 +58,7 @@ async def test_incorrect_load(tmp_path):
         file_name, tmp_path
     )
 
-    assert collection1.media_collection == []
-    assert collection1.all_urls == set()
+    assert collection1.collection == {}
     assert (
         collection1.last_updated
         != arrow.get("2024-03-12 09:58:41.306122+00:00").datetime
@@ -85,9 +76,68 @@ async def test_incorrect_load(tmp_path):
         file_name, tmp_path
     )
 
-    assert collection2.media_collection == []
-    assert collection2.all_urls == set()
+    assert collection2.collection == {}
     assert (
         collection2.last_updated
         != arrow.get("2024-03-12 09:58:41.306122+00:00").datetime
     )
+
+
+@pytest.mark.asyncio
+async def test_update_media(media_examples):
+    show1, show2, show3, *_ = media_examples
+
+    collection_lock = asyncio.Lock()
+    eztv_collection: MediaCollection = MediaCollection()
+    await asyncio.gather(
+        *(
+            eztv_collection.add_media(show, collection_lock)
+            for show in [show1, show2, show3]
+        )
+    )
+
+    show1_with_edits = show1.model_copy()
+    show1_with_edits.status = "Ongoing"
+
+    assert await eztv_collection.update_media(show1_with_edits, collection_lock)
+
+    updated_show: Media = await eztv_collection.get_media(
+        show1_with_edits.url, collection_lock
+    )
+
+    assert updated_show != show1
+    assert updated_show.title == show1.title
+    assert updated_show.type == show1.type
+    assert updated_show.imdb == show1.imdb
+    assert updated_show.status != show1.status
+    assert updated_show.last_updated != show1.last_updated
+
+    assert not await eztv_collection.update_media(show1_with_edits, collection_lock)
+
+
+@pytest.mark.asyncio
+async def test_missing_imdbs(media_examples):
+    show1, show2, show3, *_ = media_examples
+
+    collection_lock = asyncio.Lock()
+    eztv_collection: MediaCollection = MediaCollection()
+    await asyncio.gather(
+        *(
+            eztv_collection.add_media(show, collection_lock)
+            for show in [show1, show2, show3]
+        )
+    )
+
+    missing_imdb_list = await eztv_collection.missing_imdbs(collection_lock)
+    assert len(missing_imdb_list) == 0
+
+    show1_with_no_imdb = show1.model_copy()
+    show1_with_no_imdb.imdb = None
+    assert await eztv_collection.update_media(show1_with_no_imdb, collection_lock)
+
+    show2_with_no_imdb = show2.model_copy()
+    show2_with_no_imdb.imdb = None
+    assert await eztv_collection.update_media(show2_with_no_imdb, collection_lock)
+
+    missing_imdb_list_2 = await eztv_collection.missing_imdbs(collection_lock)
+    assert len(missing_imdb_list_2) == 2

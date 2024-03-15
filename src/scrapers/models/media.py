@@ -10,7 +10,11 @@ class Media(BaseModel):
     type: str
     imdb: str | None = None
     status: str
-    last_updated: datetime
+    last_updated: datetime | None = None
+    info_hash: str | None = None
+    size: str | None = None
+    seeders: int | None = None
+    leechers: int | None = None
 
     @field_validator("type")
     @classmethod
