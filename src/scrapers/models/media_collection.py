@@ -19,7 +19,7 @@ class MediaCollection(BaseModel):
 
     async def add_media(self, media: Media, lock: asyncio.Lock) -> bool:
         async with lock:
-            if media.url not in self.collection.keys():
+            if media.url not in self.collection:
                 self.collection[media.url] = media
                 return True
         # Media already exists
@@ -27,15 +27,24 @@ class MediaCollection(BaseModel):
 
     async def get_media(self, url: str, lock: asyncio.Lock) -> Media:
         async with lock:
-            if url not in self.collection.keys():
+            if url not in self.collection:
                 raise KeyError
 
             return self.collection[url].model_copy()
 
+    async def update_imdb(self, url: str, imdb: str | None, lock: asyncio.Lock) -> bool:
+        async with lock:
+            if url not in self.collection:
+                raise KeyError
+
+            self.collection[url].imdb = imdb
+            self.collection[url].last_imdb_update = Arrow.utcnow().datetime
+            return True
+
     async def update_media(self, media: Media, lock: asyncio.Lock) -> bool:
         # Can't update it if it doesn't exist
         async with lock:
-            if media.url not in self.collection.keys():
+            if media.url not in self.collection:
                 raise KeyError
 
             if self.collection[media.url] != media:
@@ -57,15 +66,25 @@ class MediaCollection(BaseModel):
     async def missing_imdbs(self, lock: asyncio.Lock) -> list[str]:
         async with lock:
             return [
-                media.url for media in self.collection.values() if media.imdb is None
+                media.url
+                for media in self.collection.values()
+                if media.imdb is None
+                and (
+                    media.last_imdb_update is None
+                    or (Arrow.utcnow() - Arrow.fromdatetime(media.last_imdb_update))
+                    > timedelta(hours=config.data_cache_hours)
+                )
             ]
 
     async def save_to_file(
         self,
         filename: str,
         lock: asyncio.Lock,
-        data_directory: Path = Path.cwd() / "data",
+        data_directory: Path | None = None,
     ) -> NoReturn:
+        if data_directory is None:
+            data_directory = Path.cwd() / "data"
+
         data_directory.mkdir(parents=True, exist_ok=True)
         file: Path = data_directory / f"{filename}.json"
 

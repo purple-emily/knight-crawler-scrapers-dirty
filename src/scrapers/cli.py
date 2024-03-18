@@ -26,7 +26,7 @@ def create_data_directory(data_directory_str: str) -> Path:
             except Exception as exception:
                 logger.exception(exception)
                 logger.error("There was an error creating the data directory.")
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from exception
         else:
             logger.error("Cannot proceed without a valid data directory.")
             raise typer.Exit(code=1)
@@ -39,7 +39,7 @@ def consumer(
     log_level: Annotated[
         str, typer.Option(help="Verbosity level of the logger")
     ] = "DEBUG",
-):
+) -> None:
     """
     Start a consumer. Can run multiple at once.
     """
@@ -61,7 +61,7 @@ def producer(
     ] = "DEBUG",
     # Scrape EZTV
     scrape_eztv: Annotated[bool, typer.Option(help="Scrape EZTV")] = True,
-):
+) -> None:
     """
     Start a producer. Only start one.
     """

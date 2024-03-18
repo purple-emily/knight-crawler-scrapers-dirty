@@ -40,7 +40,6 @@ ruff = "^0.2.2"
 
 [tool.pyright]
 ignore = ["tests"]
-include = ["src/scrapers"]
 reportMissingImports = true
 reportUnusedFunction = true
 reportUnusedImport = true
@@ -53,14 +52,31 @@ fix = true
 src = ["src", "tests", "docs"]
 
 [tool.ruff.lint]
+# https://docs.astral.sh/ruff/rules/
 extend-select = [
-    "I",   # isort
+    "ARG", # flake8-unused-arguments
+    "B",   # flake8-bugbear
     "C90", # mccabe complexity
+    "I",   # isort
+    "PIE", # flake8-pie
+    "PL",  # pycodestyle
+    "Q",   # flake8-quotes
+    "RET", # flake8-return
+    "RSE", # flake8-raise
+    "S",   # flake8-bandit
+    "SIM", # flake8-simplify
+    "SLF", # flake8-self
+    "T10", # flake8-debugger
+    "T20", # flake8-print
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["scrapers", "tests"]
 case-sensitive = true
+known-first-party = ["scrapers", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# "__init__.py" = ["E402"]
+"typings/**" = ["PLR0913", "SLF001"]
 
 
 [tool.coverage.run]

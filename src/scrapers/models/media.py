@@ -9,6 +9,7 @@ class Media(BaseModel):
     title: str
     type: str
     imdb: str | None = None
+    last_imdb_update: datetime | None = None
     status: str
     last_updated: datetime | None = None
     info_hash: str | None = None
@@ -18,14 +19,14 @@ class Media(BaseModel):
 
     @field_validator("type")
     @classmethod
-    def type_is_movie_or_tv(cls: Any, v: Any):
+    def type_is_movie_or_tv(cls: Any, v: Any) -> Any:
         if v not in ("anime", "movies", "tv"):
             raise ValueError("type must be 'anime', 'movies' or 'tv'")
         return v
 
     @field_validator("imdb", mode="before")
     @classmethod
-    def fix_imdb_id(cls: Any, v: Any):
+    def fix_imdb_id(cls: Any, v: Any) -> Any:
         if v is None:
             return None
         if isinstance(v, int):
